@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6f7fb" />
+    <title>Post Studio — your LinkedIn writing space</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <svg
+      class="svg-library"
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <symbol id="i-spark" viewBox="0 0 24 24">
+        <path
+          d="M12 2.5 13.9 8.7 20 10.6l-6.1 1.9-1.9 6.2-1.9-6.2L4 10.6l6.1-1.9L12 2.5Zm6.5 12.2.9 2.8 2.6.8-2.6.8-.9 2.8-.9-2.8-2.6-.8 2.6-.8.9-2.8Z"
+        />
+      </symbol>
+      <symbol id="i-pen" viewBox="0 0 24 24">
+        <path
+          d="m4 16.5-.6 4.1 4.1-.6L19 8.5l-3.5-3.5L4 16.5Zm9.8-9.8 3.5 3.5M15.5 5l1.6-1.6a2.5 2.5 0 0 1 3.5 3.5L19 8.5"
+        />
+      </symbol>
+      <symbol id="i-stack" viewBox="0 0 24 24">
+        <path d="M5 5.5h14v13H5zM8 9h8M8 12.5h8M8 16h5" />
+      </symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24">
+        <path
+          d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-1.7-.7-.3-1.1.8-1.7-1.6-1.6-1.7.8-1.1-.3L13.7 5h-2.3l-.7 2.4-1.1.3-1.7-.8L6.3 8.5l.8 1.7-.3 1.1L5 12v2.2l1.8.7.3 1.1-.8 1.7 1.6 1.6 1.7-.8 1.1.3.7 2.2h2.3l.7-2.2 1.1-.3 1.7.8 1.6-1.6-.8-1.7.3-1.1 1.7-.7V12Z"
+        />
+      </symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24">
+        <path d="M5 12h14m-5-5 5 5-5 5" />
+      </symbol>
+      <symbol id="i-back" viewBox="0 0 24 24">
+        <path d="M19 12H5m5-5-5 5 5 5" />
+      </symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.5v5l3 2" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24">
+        <path d="m5 12 4.4 4.4L19 7" />
+      </symbol>
+      <symbol id="i-image" viewBox="0 0 24 24">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+        <circle cx="8.5" cy="9" r="1.3" />
+        <path d="m4.5 17 4.8-4.7 3.2 3 2.8-2.5 4.2 4" />
+      </symbol>
+      <symbol id="i-linkedin" viewBox="0 0 24 24">
+        <path
+          d="M5 9h3v10H5zm1.5-4a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2ZM11 9h2.8v1.4A3.2 3.2 0 0 1 16.7 9c2.3 0 3.3 1.5 3.3 4v6h-3v-5.4c0-1.3-.3-2.1-1.5-2.1-1 0-1.5.7-1.5 2.1V19h-3V9Z"
+        />
+      </symbol>
+    </svg>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a
+          class="brand"
+          href="#create"
+          data-nav="create"
+          aria-label="Post Studio home"
+        >
+          <span class="brand-mark"
+            ><svg class="icon"><use href="#i-spark"></use></svg
+          ></span>
+          <span
+            ><strong>post studio</strong
+            ><small>YOUR LINKEDIN SPACE</small></span
+          >
+        </a>
+        <div class="nav-label">WORKSPACE</div>
+        <nav class="nav" aria-label="Main navigation">
+          <button class="nav-link active" type="button" data-nav="create">
+            <svg class="icon"><use href="#i-pen"></use></svg
+            ><span>Create a post</span>
+          </button>
+          <button class="nav-link" type="button" data-nav="queue">
+            <svg class="icon"><use href="#i-stack"></use></svg
+            ><span>Review queue</span
+            ><span id="nav-count" class="nav-count" hidden>0</span>
+          </button>
+          <button class="nav-link" type="button" data-nav="settings">
+            <svg class="icon"><use href="#i-settings"></use></svg
+            ><span>Settings</span>
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="sidebar-note">
+            <span class="sidebar-note-icon">✦</span
+            ><strong>Good ideas deserve<br />to be shared.</strong>
+            <p>Thoughtful posts, on your schedule.</p>
+          </div>
+          <div class="sidebar-footer">
+            <span class="tiny-dot"></span> YOUR PRIVATE WORKSPACE
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <span class="top-label">YOUR WORKSPACE</span
+            ><span class="top-divider">/</span
+            ><span id="breadcrumb">Create a post</span>
+          </div>
+          <button
+            id="connection-button"
+            class="connection"
+            type="button"
+            data-nav="settings"
+          >
+            <span id="connection-dot" class="connection-dot"></span
+            ><span id="connection-label">Connect LinkedIn</span
+            ><svg class="icon"><use href="#i-arrow"></use></svg>
+          </button>
+        </header>
+
+        <div class="content">
+          <section id="view-create" class="view" aria-labelledby="create-title">
+            <div class="page-heading">
+              <div>
+                <div class="eyebrow"><span></span> YOUR NEXT GREAT POST</div>
+                <h1 id="create-title">
+                  Let’s make something <em>worth sharing.</em>
+                </h1>
+                <p>
+                  Start with an idea. We’ll help you turn it into a post that
+                  sounds like you.
+                </p>
+              </div>
+              <span class="heading-spark" aria-hidden="true">✳</span>
+            </div>
+            <div id="setup-banner" class="setup-banner" hidden>
+              <span class="setup-icon">✦</span
+              ><span
+                ><strong>First, connect your tools.</strong> Choose and test
+                your AI providers to start creating.</span
+              ><button type="button" class="text-link" data-nav="settings">
+                Open settings <span aria-hidden="true">↗</span>
+              </button>
+            </div>
+            <div class="create-layout">
+              <section class="panel brief-panel" aria-labelledby="brief-title">
+                <div class="panel-heading">
+                  <div>
+                    <div class="section-kicker">
+                      THE STARTING POINT <span>01</span>
+                    </div>
+                    <h2 id="brief-title">Tell us your idea</h2>
+                    <p>A little context goes a long way.</p>
+                  </div>
+                  <span class="panel-icon"
+                    ><svg class="icon"><use href="#i-pen"></use></svg
+                  ></span>
+                </div>
+                <div id="provider-summary" class="provider-summary" hidden>
+                  <svg class="icon"><use href="#i-spark"></use></svg>
+                  <span id="provider-summary-text"></span>
+                  <button class="text-link" type="button" data-nav="settings">
+                    Change
+                  </button>
+                </div>
+                <form id="create-form">
+                  <label for="topic"
+                    >What’s your topic? <span class="required">*</span></label
+                  >
+                  <input
+                    id="topic"
+                    name="topic"
+                    type="text"
+                    maxlength="300"
+                    placeholder="e.g. What I learned building my first product"
+                    required
+                  />
+                  <div class="field-heading">
+                    <label for="context"
+                      >Add some context
+                      <span class="optional">OPTIONAL</span></label
+                    ><span>Make it yours</span>
+                  </div>
+                  <textarea
+                    id="context"
+                    name="context"
+                    maxlength="10000"
+                    rows="5"
+                    placeholder="Share your perspective, key points, tone, or anything you want the post to include."
+                  ></textarea>
+                  <div class="form-divider"></div>
+                  <div class="schedule-heading">
+                    <div>
+                      <div class="section-kicker">
+                        YOUR SCHEDULE <span>02</span>
+                      </div>
+                      <h3>When should it go out?</h3>
+                    </div>
+                    <svg class="icon"><use href="#i-clock"></use></svg>
+                  </div>
+                  <div class="schedule-grid">
+                    <div>
+                      <label for="first-time">First post</label
+                      ><input
+                        id="first-time"
+                        type="datetime-local"
+                        required
+                      /><span id="timezone-label" class="field-hint"></span>
+                    </div>
+                    <div>
+                      <label for="repeat-unit">Repeat</label
+                      ><select id="repeat-unit">
+                        <option value="once">Just once</option>
+                        <option value="hours">Every few hours</option>
+                        <option value="days">Every few days</option>
+                        <option value="weeks">Every few weeks</option></select
+                      ><span class="field-hint">You’ll review every post.</span>
+                    </div>
+                  </div>
+                  <div id="repeat-count-wrap" class="repeat-count" hidden>
+                    <label for="repeat-count">Repeat every</label
+                    ><input
+                      id="repeat-count"
+                      type="number"
+                      min="1"
+                      max="365"
+                      value="1"
+                    /><span id="repeat-count-unit">days</span>
+                  </div>
+                  <div class="form-action">
+                    <p>
+                      <svg class="icon"><use href="#i-check"></use></svg>
+                      Nothing is published without your approval.
+                    </p>
+                    <button
+                      id="create-button"
+                      class="button button-primary"
+                      type="submit"
+                      disabled
+                    >
+                      <svg class="icon"><use href="#i-spark"></use></svg> Create
+                      my draft
+                      <svg class="icon button-arrow">
+                        <use href="#i-arrow"></use>
+                      </svg>
+                    </button>
+                  </div>
+                </form>
+              </section>
+              <aside class="create-aside">
+                <div class="guide-card">
+                  <div class="guide-art" aria-hidden="true">
+                    <div class="art-card">
+                      <span class="art-dot"></span><i></i><i></i><i></i>
+                      <div class="art-picture">✳</div>
+                    </div>
+                    <span class="art-spark one">✦</span
+                    ><span class="art-spark two">✧</span>
+                  </div>
+                  <div class="section-kicker">A LITTLE HELP FROM AI</div>
+                  <h2>From a thought<br />to a <em>finished post.</em></h2>
+                  <p>
+                    We’ll write a first draft and can create a matching image.
+                    You’re always in control of the final version.
+                  </p>
+                  <div class="guide-steps">
+                    <div><span>1</span> Share your idea</div>
+                    <div><span>2</span> Review and refine</div>
+                    <div><span>3</span> Approve and schedule</div>
+                  </div>
+                </div>
+                <div class="aside-queue">
+                  <div class="aside-title">
+                    <div>
+                      <span class="section-kicker">UP NEXT</span>
+                      <h3>Your queue</h3>
+                    </div>
+                    <button
+                      class="icon-link"
+                      type="button"
+                      data-nav="queue"
+                      aria-label="Open review queue"
+                    >
+                      <svg class="icon"><use href="#i-arrow"></use></svg>
+                    </button>
+                  </div>
+                  <div id="upcoming-list"></div>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <section
+            id="view-queue"
+            class="view"
+            aria-labelledby="queue-title"
+            hidden
+          >
+            <div class="page-heading compact">
+              <div>
+                <div class="eyebrow"><span></span> YOUR CONTENT, YOUR CALL</div>
+                <h1 id="queue-title">The review <em>queue.</em></h1>
+                <p>Everything you’re working on, all in one place.</p>
+              </div>
+            </div>
+            <div class="queue-summary">
+              <div>
+                <span class="summary-dot purple"></span
+                ><strong id="count-review">0</strong><span>need review</span>
+              </div>
+              <div>
+                <span class="summary-dot blue"></span
+                ><strong id="count-scheduled">0</strong><span>scheduled</span>
+              </div>
+              <div>
+                <span class="summary-dot green"></span
+                ><strong id="count-published">0</strong><span>published</span>
+              </div>
+            </div>
+            <div class="queue-heading">
+              <div>
+                <h2>Your posts</h2>
+                <p>Open a draft to edit, chat with AI, or approve it.</p>
+              </div>
+              <button
+                class="button button-soft"
+                type="button"
+                data-nav="create"
+              >
+                + New post
+              </button>
+            </div>
+            <div id="queue-list" class="queue-list" aria-live="polite"></div>
+          </section>
+
+          <section
+            id="view-review"
+            class="view"
+            aria-labelledby="review-title"
+            hidden
+          >
+            <button class="back-link" type="button" data-nav="queue">
+              <svg class="icon"><use href="#i-back"></use></svg> Back to queue
+            </button>
+            <div class="review-heading">
+              <div>
+                <div class="eyebrow"><span></span> YOUR DRAFT</div>
+                <h1 id="review-title">Make it <em>yours.</em></h1>
+                <p id="review-subtitle"></p>
+              </div>
+              <span id="review-status" class="status-chip"></span>
+            </div>
+            <div
+              id="review-alert"
+              class="review-alert"
+              role="status"
+              hidden
+            ></div>
+            <div class="review-layout">
+              <section class="panel editor-panel" aria-label="Post editor">
+                <div class="editor-top">
+                  <div class="avatar">in</div>
+                  <div>
+                    <strong id="preview-name">Your LinkedIn post</strong
+                    ><span>Post preview · Public</span>
+                  </div>
+                  <svg class="icon linkedin-icon">
+                    <use href="#i-linkedin"></use>
+                  </svg>
+                </div>
+                <div class="editor-content">
+                  <div class="field-heading">
+                    <label for="post-content">Your post</label
+                    ><span id="character-count">0 / 3000</span>
+                  </div>
+                  <textarea
+                    id="post-content"
+                    rows="12"
+                    maxlength="3000"
+                    placeholder="Your draft will appear here."
+                  ></textarea>
+                  <div class="image-heading">
+                    <div>
+                      <label>Post image</label>
+                      <p>Made for your idea. You can ask AI to change it.</p>
+                    </div>
+                    <svg class="icon"><use href="#i-image"></use></svg>
+                  </div>
+                  <div id="image-placeholder" class="image-placeholder">
+                    <svg class="icon"><use href="#i-image"></use></svg
+                    ><span>Your image will appear here</span>
+                  </div>
+                  <img
+                    id="post-image"
+                    class="post-image"
+                    alt="AI-generated image for this LinkedIn post"
+                    hidden
+                  />
+                  <div id="image-edit-wrap" class="image-edit">
+                    <label for="image-instruction"
+                      >Want a different look?</label
+                    >
+                    <div class="input-action">
+                      <input
+                        id="image-instruction"
+                        maxlength="2000"
+                        placeholder="e.g. Use a warmer color palette"
+                      /><button
+                        id="image-button"
+                        class="button button-soft"
+                        type="button"
+                      >
+                        Update image
+                      </button>
+                    </div>
+                    <p id="image-hint" class="field-hint">
+                      Describe a change, then review the new image before
+                      approving.
+                    </p>
+                  </div>
+                  <div id="text-only-wrap" class="text-only-wrap" hidden>
+                    <label class="option-line" for="publish-without-image"
+                      ><input id="publish-without-image" type="checkbox" />
+                      Approve this post without an image</label
+                    >
+                    <p class="field-hint">
+                      You can also select an image provider in Settings and
+                      generate an image first.
+                    </p>
+                  </div>
+                  <div class="form-divider"></div>
+                  <div class="schedule-heading review-schedule">
+                    <div>
+                      <div class="section-kicker">PUBLISHING TIME</div>
+                      <h3>When it goes live</h3>
+                    </div>
+                    <svg class="icon"><use href="#i-clock"></use></svg>
+                  </div>
+                  <label for="review-time" class="visually-hidden"
+                    >Scheduled date and time</label
+                  ><input id="review-time" type="datetime-local" />
+                  <p id="review-schedule-detail" class="field-hint"></p>
+                </div>
+                <div class="editor-actions">
+                  <div id="edit-actions">
+                    <button
+                      id="save-button"
+                      class="button button-outline"
+                      type="button"
+                    >
+                      Save changes</button
+                    ><button
+                      id="approve-button"
+                      class="button button-primary"
+                      type="button"
+                    >
+                      <svg class="icon"><use href="#i-check"></use></svg>
+                      Approve &amp; schedule
+                    </button>
+                  </div>
+                  <button
+                    id="unapprove-button"
+                    class="button button-outline"
+                    type="button"
+                    hidden
+                  >
+                    Move back to review</button
+                  ><button
+                    id="retry-button"
+                    class="button button-outline"
+                    type="button"
+                    hidden
+                  >
+                    Try again</button
+                  ><a
+                    id="published-link"
+                    class="button button-outline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    hidden
+                    >View on LinkedIn ↗</a
+                  >
+                  <div class="secondary-actions">
+                    <button
+                      id="stop-repeat-button"
+                      class="text-link muted-link"
+                      type="button"
+                      hidden
+                    >
+                      Stop repeating</button
+                    ><button
+                      id="delete-button"
+                      class="text-link muted-link"
+                      type="button"
+                    >
+                      Delete draft
+                    </button>
+                  </div>
+                </div>
+              </section>
+              <aside class="panel chat-panel" aria-label="AI writing assistant">
+                <div class="chat-heading">
+                  <div class="chat-icon">
+                    <svg class="icon"><use href="#i-spark"></use></svg>
+                  </div>
+                  <div>
+                    <h2>Your writing partner</h2>
+                    <p>Here to help you refine.</p>
+                  </div>
+                  <span class="chat-online"></span>
+                </div>
+                <div
+                  id="chat-messages"
+                  class="chat-messages"
+                  aria-live="polite"
+                ></div>
+                <form id="chat-form" class="chat-form">
+                  <label for="chat-input" class="visually-hidden"
+                    >Ask the writing assistant</label
+                  ><textarea
+                    id="chat-input"
+                    rows="2"
+                    maxlength="4000"
+                    placeholder="Ask a question or request a rewrite…"
+                  ></textarea
+                  ><button
+                    id="chat-send"
+                    class="chat-send"
+                    type="submit"
+                    aria-label="Send to writing assistant"
+                  >
+                    <svg class="icon"><use href="#i-arrow"></use></svg>
+                  </button>
+                </form>
+                <p class="chat-caption">
+                  AI suggestions are yours to accept or ignore.
+                </p>
+              </aside>
+            </div>
+          </section>
+
+          <section
+            id="view-settings"
+            class="view"
+            aria-labelledby="settings-title"
+            hidden
+          >
+            <div class="page-heading compact">
+              <div>
+                <div class="eyebrow"><span></span> YOUR CONNECTIONS</div>
+                <h1 id="settings-title">Make yourself <em>at home.</em></h1>
+                <p>Connect your tools once, then get back to creating.</p>
+              </div>
+            </div>
+            <div class="settings-layout">
+              <section class="panel settings-card">
+                <div class="settings-card-title">
+                  <span class="settings-icon violet"
+                    ><svg class="icon"><use href="#i-spark"></use></svg
+                  ></span>
+                  <div>
+                    <h2>Writing AI</h2>
+                    <p>For drafts and review chat</p>
+                  </div>
+                  <span id="text-ai-badge" class="settings-badge"
+                    >Not configured</span
+                  >
+                </div>
+                <p class="settings-description">
+                  Choose a provider and model. Keys stay on the computer running
+                  this app, unencrypted. New drafts and future repeats use the
+                  current settings. Testing makes a small request and may use
+                  API credits.
+                </p>
+                <form id="text-ai-form" class="ai-form">
+                  <label for="text-provider">Provider</label
+                  ><select id="text-provider"></select>
+                  <div id="text-model-wrap">
+                    <label for="text-model">Model ID</label
+                    ><input
+                      id="text-model"
+                      maxlength="200"
+                      autocomplete="off"
+                      placeholder="Enter a model ID"
+                    />
+                  </div>
+                  <div id="text-url-wrap" hidden>
+                    <label for="text-base-url">API base URL</label
+                    ><input
+                      id="text-base-url"
+                      type="url"
+                      maxlength="1000"
+                      autocomplete="off"
+                      placeholder="https://provider.example/v1"
+                    />
+                    <p class="field-hint">
+                      Use HTTPS, or HTTP for a server on this computer.
+                    </p>
+                  </div>
+                  <div id="text-key-wrap">
+                    <label for="text-api-key">API key</label
+                    ><input
+                      id="text-api-key"
+                      type="password"
+                      autocomplete="off"
+                      maxlength="2000"
+                      placeholder="Your provider API key"
+                    />
+                  </div>
+                  <div class="settings-actions">
+                    <button
+                      id="text-test-button"
+                      class="button button-primary"
+                      type="submit"
+                    >
+                      Test &amp; save</button
+                    ><button
+                      id="text-remove-key"
+                      class="text-link muted-link"
+                      type="button"
+                      hidden
+                    >
+                      Remove key
+                    </button>
+                  </div>
+                  <p id="text-ai-detail" class="field-hint"></p>
+                  <p
+                    id="text-test-result"
+                    class="test-result"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
+                </form>
+              </section>
+              <section class="panel settings-card">
+                <div class="settings-card-title">
+                  <span class="settings-icon violet image-provider-icon"
+                    ><svg class="icon"><use href="#i-image"></use></svg
+                  ></span>
+                  <div>
+                    <h2>Image AI</h2>
+                    <p>For generated post images</p>
+                  </div>
+                  <span id="image-ai-badge" class="settings-badge"
+                    >Not configured</span
+                  >
+                </div>
+                <p class="settings-description">
+                  Use the writing provider when it supports images, choose
+                  another, or create text-only posts. Generating and editing
+                  images may use paid credits. Testing generates a sample image,
+                  which is then deleted.
+                </p>
+                <form id="image-ai-form" class="ai-form">
+                  <label for="image-provider">Provider</label
+                  ><select id="image-provider"></select>
+                  <div id="image-model-wrap">
+                    <label for="image-model">Image model ID</label
+                    ><input
+                      id="image-model"
+                      maxlength="200"
+                      autocomplete="off"
+                      placeholder="Enter an image model ID"
+                    />
+                  </div>
+                  <div id="image-url-wrap" hidden>
+                    <label for="image-base-url">API base URL</label
+                    ><input
+                      id="image-base-url"
+                      type="url"
+                      maxlength="1000"
+                      autocomplete="off"
+                      placeholder="https://provider.example/v1"
+                    />
+                    <p class="field-hint">
+                      Use HTTPS, or HTTP for a server on this computer.
+                    </p>
+                  </div>
+                  <div id="image-key-wrap">
+                    <label for="image-api-key">API key</label
+                    ><input
+                      id="image-api-key"
+                      type="password"
+                      autocomplete="off"
+                      maxlength="2000"
+                      placeholder="Your provider API key"
+                    />
+                  </div>
+                  <div class="settings-actions">
+                    <button
+                      id="image-test-button"
+                      class="button button-outline"
+                      type="submit"
+                    >
+                      Test &amp; save</button
+                    ><button
+                      id="image-remove-key"
+                      class="text-link muted-link"
+                      type="button"
+                      hidden
+                    >
+                      Remove key
+                    </button>
+                  </div>
+                  <p id="image-ai-detail" class="field-hint"></p>
+                  <p
+                    id="image-test-result"
+                    class="test-result"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
+                </form>
+              </section>
+              <section class="panel settings-card linkedin-card">
+                <div class="settings-card-title">
+                  <span class="settings-icon linkedin"
+                    ><svg class="icon"><use href="#i-linkedin"></use></svg
+                  ></span>
+                  <div>
+                    <h2>LinkedIn</h2>
+                    <p>For publishing to your profile</p>
+                  </div>
+                  <span id="linkedin-badge" class="settings-badge"
+                    >Not connected</span
+                  >
+                </div>
+                <div class="linkedin-layout">
+                  <div class="linkedin-guide">
+                    <h3>How to get your app credentials</h3>
+                    <ol>
+                      <li>
+                        Open the
+                        <a
+                          href="https://www.linkedin.com/developers/apps"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          >LinkedIn Developer Portal</a
+                        >
+                        and choose <strong>Create app</strong>. Complete the
+                        required details and associate a LinkedIn Page; LinkedIn
+                        may ask you to verify it.
+                      </li>
+                      <li>
+                        In <strong>Products</strong>, enable
+                        <strong
+                          >Sign In with LinkedIn using OpenID Connect</strong
+                        >
+                        and <strong>Share on LinkedIn</strong>. Wait until both
+                        are approved.
+                      </li>
+                      <li>
+                        Open <strong>Auth</strong>, copy the
+                        <strong>Client ID</strong> and
+                        <strong>Client Secret</strong>, and add the redirect URL
+                        shown here under
+                        <strong>Authorized redirect URLs</strong>.
+                      </li>
+                      <li>
+                        Paste the credentials here, save them, then choose
+                        <strong>Connect LinkedIn</strong> and approve access on
+                        LinkedIn.
+                      </li>
+                    </ol>
+                    <p>
+                      <strong>Why are these needed?</strong> The client ID
+                      identifies your app; the secret proves its identity when
+                      it exchanges your LinkedIn approval for an access token.
+                      That token lets the app publish for you. You sign in on
+                      LinkedIn, so this app never asks for your LinkedIn
+                      password. Keep the client secret private.
+                    </p>
+                  </div>
+                  <div class="linkedin-credentials">
+                    <span class="redirect-label">Authorized redirect URL</span>
+                    <div class="copy-line">
+                      <code>http://localhost:8000/auth/linkedin/callback</code
+                      ><button
+                        id="copy-redirect"
+                        class="text-link"
+                        type="button"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <form id="linkedin-form">
+                      <div class="settings-fields">
+                        <div>
+                          <label for="linkedin-id">Client ID</label
+                          ><input
+                            id="linkedin-id"
+                            autocomplete="off"
+                            maxlength="500"
+                            placeholder="Your LinkedIn client ID"
+                          />
+                        </div>
+                        <div>
+                          <label for="linkedin-secret">Client secret</label
+                          ><input
+                            id="linkedin-secret"
+                            type="password"
+                            autocomplete="off"
+                            maxlength="1000"
+                            placeholder="Your LinkedIn client secret"
+                          />
+                        </div>
+                      </div>
+                      <div class="settings-actions">
+                        <button class="button button-outline" type="submit">
+                          Save app details</button
+                        ><a
+                          id="linkedin-connect"
+                          class="button button-linkedin"
+                          href="/api/linkedin/connect"
+                          >Connect LinkedIn
+                          <span aria-hidden="true">↗</span></a
+                        ><button
+                          id="linkedin-disconnect"
+                          class="text-link muted-link"
+                          type="button"
+                          hidden
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                    </form>
+                    <p id="linkedin-detail" class="field-hint"></p>
+                    <a
+                      class="external-link"
+                      href="https://www.linkedin.com/developers/apps"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >Open LinkedIn Developer Portal ↗</a
+                    >
+                  </div>
+                </div>
+              </section>
+              <section class="panel settings-card notification-card">
+                <div class="settings-card-title">
+                  <span class="settings-icon mint">✦</span>
+                  <div>
+                    <h2>Review reminders</h2>
+                    <p>Get a nudge when a draft is ready</p>
+                  </div>
+                </div>
+                <p class="settings-description">
+                  Allow browser notifications to be notified while this page is
+                  open. Your queue is always available here.
+                </p>
+                <button
+                  id="notifications-button"
+                  class="button button-outline"
+                  type="button"
+                >
+                  Enable notifications
+                </button>
+                <p id="notifications-detail" class="field-hint"></p>
+              </section>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

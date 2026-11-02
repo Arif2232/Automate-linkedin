@@ -1,0 +1,9 @@
+fastapi>=0.115,<1
+pydantic>=2.9,<3
+uvicorn>=0.34,<1
+httpx>=0.27,<1
+openai>=1.70,<3
+pillow>=11,<14
+huggingface_hub>=2.0,<3
+itsdangerous>=2.2,<3
+tzdata>=2025.1; sys_platform == "win32"

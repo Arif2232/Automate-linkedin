@@ -1,6 +1,16 @@
-# Post Studio
+# Post Studio — AI LinkedIn Post Scheduler
 
 Turn a topic and a little context into a LinkedIn post and an AI-generated image. Review the draft, edit it yourself or ask the writing assistant for changes, then approve it for a scheduled time. Nothing is published before you approve it.
+
+Built by [Arif](https://github.com/Arif2232) · [Questions or suggestions? Open an issue](https://github.com/Arif2232/Automate-linkedin/issues)
+
+## Features
+
+- Generate and revise posts with OpenAI, Gemini, Claude, and other AI providers.
+- Create and edit images, or choose a text-only post.
+- Schedule one-time or recurring posts by hour, day, or week, with approval for each post.
+- Connect a personal LinkedIn profile with OAuth and publish while the local app is running.
+- Keep drafts and settings in a local SQLite database.
 
 ## What you need
 

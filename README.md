@@ -79,7 +79,7 @@ The **client ID** identifies your developer app. The **client secret** proves th
 
 1. Enter a topic, any context or tone, the first publishing time, and optionally a repeat interval in hours, days, or weeks. Times are shown in your device's time zone.
 2. The app creates a draft and, when an image provider is configured, an image. If image generation fails, the text is kept and you can try the image again.
-3. Edit the text directly, ask the writing assistant questions or for a rewrite, and use its reply if you like it. You can also describe a change to the image. Review the result and save your changes.
+3. Open the draft from the review queue. Edit its topic or text directly, ask the writing assistant for a rewrite, or describe a change to the image. Changing the topic affects only that draft; it does not rewrite its text or image or change future recurring posts. Review the result and save your changes.
 4. Connect LinkedIn and choose **Approve & schedule**. If there is no image, explicitly check **Approve this post without an image** first. The approved content is locked; choose **Move back to review** to edit it before publishing begins.
 
 For a repeating schedule, after each successful publication the app prepares one fresh draft for the next future slot. Each draft needs its own approval. Missed repeat slots are skipped instead of producing a backlog. Hourly intervals use elapsed hours; daily and weekly intervals keep the scheduled local time across daylight-saving changes. You can stop repeating without deleting the current draft.

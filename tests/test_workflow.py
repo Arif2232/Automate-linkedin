@@ -748,3 +748,113 @@ def test_repeated_clicks_do_not_start_duplicate_paid_tests(client, monkeypatch):
             release.set()
         assert first.result(timeout=2).status_code == 200
     assert calls == [1]
+
+
+def test_editing_a_review_topic_preserves_history_and_future_drafts(client, monkeypatch):
+    setup(client)
+    scheduled = storage.now() + timedelta(hours=1)
+    first = create(client, "days", scheduled)
+    generate(first["id"], monkeypatch)
+    assert approve(client, detail(client, first["id"])).status_code == 200
+
+    async def publish(*args):
+        return "urn:li:share:123"
+
+    monkeypatch.setattr(services, "publish_to_linkedin", publish)
+    monkeypatch.setattr(worker, "now", lambda: scheduled + timedelta(seconds=1))
+    assert worker.claim("approved", "publishing", due=True) == first["id"]
+    asyncio.run(worker.publish(first["id"]))
+    second = next(post for post in client.get("/api/posts").json() if post["id"] != first["id"])
+    generate(second["id"], monkeypatch)
+    with storage.db(write=True) as connection:
+        connection.execute("UPDATE posts SET content = ? WHERE id = ?", ("A draft worth reviewing.  \n", second["id"]))
+    second = detail(client, second["id"])
+    edited = client.patch(f"/api/posts/{second['id']}", json={
+        "topic": "The next topic", "content": second["content"], "scheduled_at": second["scheduled_at"],
+        "timezone": "Asia/Kolkata", "revision": second["revision"],
+    })
+    assert edited.status_code == 200
+    assert edited.json()["topic"] == "The next topic"
+    assert edited.json()["content"] == second["content"]
+    assert detail(client, first["id"])["topic"] == "A meaningful topic"
+    invalid = client.patch(f"/api/posts/{second['id']}", json={
+        "topic": "   ", "content": second["content"], "scheduled_at": second["scheduled_at"],
+        "timezone": "Asia/Kolkata", "revision": edited.json()["revision"],
+    })
+    assert invalid.status_code == 400
+    assert detail(client, second["id"])["topic"] == "The next topic"
+    assert approve(client, edited.json()).status_code == 200
+    locked = client.patch(f"/api/posts/{second['id']}", json={
+        "topic": "A hidden change", "content": second["content"], "scheduled_at": second["scheduled_at"],
+        "timezone": "Asia/Kolkata", "revision": edited.json()["revision"],
+    })
+    assert locked.status_code == 409
+    monkeypatch.setattr(worker, "now", lambda: storage.parse_time(second["scheduled_at"]) + timedelta(seconds=1))
+    assert worker.claim("approved", "publishing", due=True) == second["id"]
+    asyncio.run(worker.publish(second["id"]))
+    newest = next(post for post in client.get("/api/posts").json() if post["status"] == "queued")
+    assert newest["topic"] == "A meaningful topic"
+
+
+def test_existing_database_keeps_drafts_and_credentials_during_topic_migration(tmp_path, monkeypatch):
+    import sqlite3
+
+    data = tmp_path / "legacy"
+    data.mkdir(mode=0o700)
+    database = data / "studio.sqlite3"
+    database.touch(mode=0o600)
+    with sqlite3.connect(database) as connection:
+        connection.executescript("""
+            CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE series (id TEXT PRIMARY KEY, topic TEXT NOT NULL, context TEXT NOT NULL,
+                repeat_unit TEXT NOT NULL, repeat_every INTEGER NOT NULL, timezone TEXT NOT NULL,
+                anchor_at TEXT NOT NULL, active INTEGER NOT NULL);
+            CREATE TABLE posts (id TEXT PRIMARY KEY, series_id TEXT NOT NULL REFERENCES series(id),
+                scheduled_at TEXT NOT NULL, status TEXT NOT NULL, content TEXT NOT NULL DEFAULT '',
+                image_file TEXT, image_instruction TEXT NOT NULL DEFAULT '', image_error TEXT, error TEXT,
+                approved_author TEXT, linkedin_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                revision INTEGER NOT NULL DEFAULT 0);
+            INSERT INTO settings VALUES ('openai_api_key', 'legacy-test-key');
+            INSERT INTO series VALUES ('series', 'Original topic', 'Context', 'once', 1, 'UTC',
+                '2026-11-03T00:00:00.000000Z', 0);
+            INSERT INTO posts (id, series_id, scheduled_at, status, content, created_at, updated_at)
+                VALUES ('draft', 'series', '2026-11-03T00:00:00.000000Z', 'needs_review',
+                'Existing draft text', '2026-11-02T00:00:00.000000Z', '2026-11-02T00:00:00.000000Z');
+        """)
+    monkeypatch.setattr(storage, "DATA_DIR", data)
+    monkeypatch.setattr(storage, "DB_PATH", database)
+    monkeypatch.setattr(storage, "IMAGE_DIR", data / "images")
+    storage.initialize()
+    storage.initialize()
+    with storage.db() as connection:
+        post = storage.find_post(connection, "draft")
+        assert post["topic"] == "Original topic" and post["topic_override"] is None
+        assert post["content"] == "Existing draft text"
+        assert connection.execute("SELECT value FROM settings WHERE key = 'openai_api_key'").fetchone()[0] == "legacy-test-key"
+
+
+def test_topic_only_edit_does_not_change_text_or_schedule(client, monkeypatch):
+    setup(client)
+    post = create(client, "days")
+    generate(post["id"], monkeypatch)
+    exact_text = "  Keep this formatting.\r\n\r\n"
+    exact_time = "2030-01-02T12:34:45.000000Z"
+    with storage.db(write=True) as connection:
+        connection.execute("UPDATE posts SET content = ?, scheduled_at = ? WHERE id = ?", (exact_text, exact_time, post["id"]))
+        connection.execute("UPDATE series SET anchor_at = ? WHERE id = ?", (exact_time, post["series_id"]))
+    before = detail(client, post["id"])
+    response = client.patch(f"/api/posts/{post['id']}", json={"topic": "Updated topic", "revision": before["revision"]})
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["topic"] == "Updated topic"
+    assert updated["content"] == exact_text and updated["scheduled_at"] == exact_time
+    assert updated["timezone"] == "Asia/Kolkata"
+    with storage.db() as connection:
+        assert connection.execute("SELECT anchor_at FROM series WHERE id = ?", (post["series_id"],)).fetchone()[0] == exact_time
+
+
+def test_ui_assets_are_not_cached_after_updates(client):
+    for path in ("/", "/static/app.js?v=3", "/static/styles.css?v=3"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"

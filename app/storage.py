@@ -99,6 +99,7 @@ def initialize():
                 scheduled_at TEXT NOT NULL,
                 status TEXT NOT NULL,
                 content TEXT NOT NULL DEFAULT '',
+                topic_override TEXT,
                 image_file TEXT,
                 image_instruction TEXT NOT NULL DEFAULT '',
                 image_error TEXT,
@@ -119,6 +120,9 @@ def initialize():
             CREATE INDEX IF NOT EXISTS posts_due ON posts(status, scheduled_at);
         """)
     with db(write=True) as connection:
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(posts)")}
+        if "topic_override" not in columns:
+            connection.execute("ALTER TABLE posts ADD COLUMN topic_override TEXT")
         connection.execute(
             "INSERT OR IGNORE INTO settings(key, value) VALUES('session_secret', ?)",
             (secrets.token_urlsafe(48),),
@@ -183,7 +187,8 @@ def set_setting(connection, key, value):
 
 
 POST_QUERY = """
-    SELECT posts.*, series.topic, series.context, series.repeat_unit, series.repeat_every,
+    SELECT posts.*, COALESCE(posts.topic_override, series.topic) AS topic,
+           series.context, series.repeat_unit, series.repeat_every,
            series.timezone, series.anchor_at, series.active AS series_active
     FROM posts JOIN series ON series.id = posts.series_id
 """

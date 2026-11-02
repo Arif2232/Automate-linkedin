@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f6f7fb" />
     <title>Post Studio — your LinkedIn writing space</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-    <script src="/static/app.js" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=3" />
+    <script src="/static/app.js?v=3" defer></script>
   </head>
   <body>
     <svg
@@ -370,6 +370,11 @@
                   </svg>
                 </div>
                 <div class="editor-content">
+                  <div class="review-topic-field">
+                    <label for="review-topic">Topic</label>
+                    <input id="review-topic" type="text" maxlength="300" />
+                    <p id="review-topic-hint" class="field-hint"></p>
+                  </div>
                   <div class="field-heading">
                     <label for="post-content">Your post</label
                     ><span id="character-count">0 / 3000</span>

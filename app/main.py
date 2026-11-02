@@ -61,7 +61,7 @@ async def local_only(request: Request, call_next):
         "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
         "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     )
-    if request.url.path.startswith("/api/") or request.url.path == "/":
+    if request.url.path.startswith(("/api/", "/static/")) or request.url.path == "/":
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -98,9 +98,10 @@ class PostInput(BaseModel):
 
 
 class PostEdit(BaseModel):
-    content: str = Field(min_length=1, max_length=3000)
-    scheduled_at: datetime
-    timezone: str = Field(min_length=1, max_length=100)
+    topic: str | None = Field(default=None, max_length=300)
+    content: str | None = Field(default=None, min_length=1, max_length=3000)
+    scheduled_at: datetime | None = None
+    timezone: str | None = Field(default=None, min_length=1, max_length=100)
     revision: int = Field(ge=0)
 
 
@@ -439,18 +440,26 @@ def post_image(post_id: str):
 
 @app.patch("/api/posts/{post_id}")
 def edit_post(post_id: str, payload: PostEdit):
-    content = payload.content.strip()
-    if not content:
+    if payload.content is not None and not payload.content.strip():
         raise HTTPException(400, "The post cannot be empty.")
-    scheduled = valid_time(payload.scheduled_at, payload.timezone)
+    if (payload.scheduled_at is None) != (payload.timezone is None):
+        raise HTTPException(400, "Include both the scheduled time and time zone.")
+    if payload.topic is None and payload.content is None and payload.scheduled_at is None:
+        raise HTTPException(400, "No changes provided.")
+    scheduled = valid_time(payload.scheduled_at, payload.timezone) if payload.scheduled_at is not None else None
     with db(write=True) as connection:
         row = require_post(connection, post_id)
         editable(row, payload.revision)
+        topic = payload.topic.strip() if payload.topic is not None else row["topic_override"]
+        if payload.topic is not None and not topic:
+            raise HTTPException(400, "The topic cannot be empty.")
+        content = payload.content if payload.content is not None else row["content"]
+        scheduled = scheduled if scheduled is not None else row["scheduled_at"]
         connection.execute(
-            "UPDATE posts SET content = ?, scheduled_at = ?, updated_at = ?, revision = revision + 1 WHERE id = ?",
-            (content, scheduled, timestamp(now()), post_id),
+            "UPDATE posts SET topic_override = ?, content = ?, scheduled_at = ?, updated_at = ?, revision = revision + 1 WHERE id = ?",
+            (topic, content, scheduled, timestamp(now()), post_id),
         )
-        if scheduled != row["scheduled_at"] or payload.timezone != row["timezone"]:
+        if payload.timezone is not None and (scheduled != row["scheduled_at"] or payload.timezone != row["timezone"]):
             connection.execute("UPDATE series SET anchor_at = ?, timezone = ? WHERE id = ?", (scheduled, payload.timezone, row["series_id"]))
         return public_post(find_post(connection, post_id))
 

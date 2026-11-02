@@ -5,6 +5,7 @@ const state = {
   posts: [],
   selected: null,
   dirty: false,
+  dirtyFields: new Set(),
   busy: false,
   creating: false,
   loaded: false,
@@ -128,6 +129,7 @@ function navigate(view, force = false) {
     return false;
   if (view !== "review") {
     state.dirty = false;
+    state.dirtyFields.clear();
     state.selected = null;
   }
   state.view = view;
@@ -366,6 +368,10 @@ function renderQueue() {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "queue-item";
+      button.setAttribute(
+        "aria-label",
+        `${post.topic}, ${statusInfo(post)[0]}. Open post.`,
+      );
       const mark = document.createElement("div");
       mark.className = "queue-item-icon";
       mark.append(icon(post.status === "published" ? "check" : "pen"));
@@ -391,7 +397,10 @@ function renderQueue() {
       time.append(dayEl, hourEl);
       const arrow = icon("arrow");
       arrow.classList.add("queue-arrow");
-      side.append(statusChip(post), time, arrow);
+      const openLabel = document.createElement("span");
+      openLabel.className = "queue-open";
+      openLabel.textContent = "Open";
+      side.append(statusChip(post), time, openLabel, arrow);
       button.append(mark, body, side);
       button.addEventListener("click", () => openPost(post.id));
       list.append(button);
@@ -460,6 +469,7 @@ async function openPost(id) {
     return;
   try {
     state.dirty = false;
+    state.dirtyFields.clear();
     await loadPost(id);
     navigate("review", true);
   } catch (error) {
@@ -472,6 +482,7 @@ async function loadPost(id) {
     return;
   state.selected = post;
   state.dirty = false;
+  state.dirtyFields.clear();
   renderReview();
 }
 function renderReview() {
@@ -484,6 +495,12 @@ function renderReview() {
   $("review-subtitle").textContent = post.topic;
   $("preview-name").textContent =
     state.config?.linkedin_name || "Your LinkedIn post";
+  $("review-topic").value = post.topic;
+  $("review-topic").disabled = !editable;
+  $("review-topic-hint").textContent =
+    post.repeat_unit === "once"
+      ? "Changing the topic won't rewrite the post or image."
+      : "Changing the topic only affects this draft, not its content or future posts.";
   $("post-content").value = post.content;
   $("post-content").disabled = !editable;
   $("review-time").value = localInput(post.scheduled_at);
@@ -498,7 +515,9 @@ function renderReview() {
   $("image-edit-wrap").hidden = !editable;
   $("text-only-wrap").hidden = !editable || Boolean(post.image_url);
   $("publish-without-image").checked = false;
+  $("publish-without-image").disabled = !editable;
   $("image-instruction").value = "";
+  $("image-instruction").disabled = !editable;
   $("image-button").textContent = post.image_url
     ? "Update image"
     : "Generate image";
@@ -592,6 +611,7 @@ function renderReview() {
       use.addEventListener("click", () => {
         $("post-content").value = message.content;
         state.dirty = true;
+        state.dirtyFields.add("post-content");
         updateCount();
         toast("Suggestion added. Save it or keep editing.");
         $("post-content").focus();
@@ -618,6 +638,18 @@ function toggleBusy(value) {
     "chat-send",
   ])
     $(id).disabled = value;
+  if (state.selected) {
+    const locked = value || state.selected.status !== "needs_review";
+    for (const id of [
+      "review-topic",
+      "post-content",
+      "review-time",
+      "image-instruction",
+      "chat-input",
+      "publish-without-image",
+    ])
+      $(id).disabled = locked;
+  }
   if (!value && state.selected)
     $("chat-send").disabled = state.selected.status !== "needs_review";
 }
@@ -635,17 +667,22 @@ async function runAction(action) {
 async function saveDraft() {
   if (!state.dirty) return;
   const post = state.selected;
+  const changes = { revision: post.revision };
+  if (state.dirtyFields.has("review-topic"))
+    changes.topic = $("review-topic").value;
+  if (state.dirtyFields.has("post-content"))
+    changes.content = $("post-content").value;
+  if (state.dirtyFields.has("review-time")) {
+    changes.scheduled_at = fromInput($("review-time").value);
+    changes.timezone = zone;
+  }
   const updated = await api(`/api/posts/${post.id}`, {
     method: "PATCH",
-    body: {
-      content: $("post-content").value,
-      scheduled_at: fromInput($("review-time").value),
-      timezone: zone,
-      revision: post.revision,
-    },
+    body: changes,
   });
   state.selected = { ...post, ...updated };
   state.dirty = false;
+  state.dirtyFields.clear();
 }
 
 for (const element of document.querySelectorAll("[data-nav]"))
@@ -695,9 +732,11 @@ $("create-form").addEventListener("submit", async (event) => {
       !ai.image.tested;
   }
 });
-for (const id of ["post-content", "review-time"])
+for (const id of ["review-topic", "post-content", "review-time"])
   $(id).addEventListener("input", () => {
     state.dirty = true;
+    state.dirtyFields.add(id);
+    if (id === "review-topic") $("review-subtitle").textContent = $(id).value;
     updateCount();
   });
 $("save-button").addEventListener("click", () =>

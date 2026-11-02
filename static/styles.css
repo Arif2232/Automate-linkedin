@@ -865,10 +865,12 @@ select:focus-visible {
 }
 .queue-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 .queue-item {
   width: 100%;
+  min-width: 0;
   text-align: left;
   border: 1px solid #e9eaf1;
   background: #fff;
@@ -923,6 +925,12 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 20px;
+}
+.queue-open {
+  color: #6a5fda;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 .queue-time {
   text-align: right;
@@ -1083,6 +1091,9 @@ select:focus-visible {
 }
 .editor-content {
   padding: 23px 24px;
+}
+.review-topic-field {
+  margin-bottom: 22px;
 }
 .editor-content textarea {
   line-height: 1.7;

@@ -505,6 +505,12 @@ function renderReview() {
   $("post-content").disabled = !editable;
   $("review-time").value = localInput(post.scheduled_at);
   $("review-time").disabled = !editable;
+  const repeating = post.repeat_unit !== "once" && post.series_active;
+  $("review-repeat-unit").value = repeating ? post.repeat_unit : "once";
+  $("review-repeat-count").value = post.repeat_every;
+  $("review-repeat-unit").disabled = !editable;
+  $("review-repeat-count").disabled = !editable;
+  updateReviewRepeat();
   $("character-count").textContent = `${post.content.length} / 3000`;
   $("post-image").hidden = !post.image_url;
   $("image-placeholder").hidden = Boolean(post.image_url);
@@ -531,12 +537,6 @@ function renderReview() {
     post.status === "approved" && !post.image_url
       ? "This post will publish without an image"
       : "Your image will appear here";
-  const repeating = post.repeat_unit !== "once" && post.series_active;
-  $("review-schedule-detail").textContent =
-    `Your device time zone: ${zone}. ` +
-    (repeating
-      ? `Repeats every ${post.repeat_every} ${post.repeat_unit}; each new draft needs your approval.`
-      : "This post will publish once approved.");
   $("edit-actions").hidden = !editable;
   $("unapprove-button").hidden = post.status !== "approved";
   $("retry-button").hidden = ![
@@ -625,6 +625,20 @@ function renderReview() {
 function updateCount() {
   $("character-count").textContent = `${$("post-content").value.length} / 3000`;
 }
+function updateReviewRepeat() {
+  const unit = $("review-repeat-unit").value;
+  const count = $("review-repeat-count").value;
+  $("review-repeat-count-wrap").hidden = unit === "once";
+  $("review-repeat-count-unit").textContent =
+    unit === "once" ? "" : count === "1" ? unit.slice(0, -1) : unit;
+  const scheduleZone = state.dirtyFields.has("review-time")
+    ? zone
+    : state.selected.timezone;
+  $("review-schedule-detail").textContent =
+    unit === "once"
+      ? `Time shown in ${zone}. This post will not repeat.`
+      : `Time shown in ${zone}. After publication, a new draft is prepared every ${count || "…"} ${count === "1" ? unit.slice(0, -1) : unit} for your approval.${unit === "hours" ? "" : ` Repeats use ${scheduleZone}.`}`;
+}
 function toggleBusy(value) {
   state.busy = value;
   for (const id of [
@@ -644,6 +658,8 @@ function toggleBusy(value) {
       "review-topic",
       "post-content",
       "review-time",
+      "review-repeat-unit",
+      "review-repeat-count",
       "image-instruction",
       "chat-input",
       "publish-without-image",
@@ -675,6 +691,14 @@ async function saveDraft() {
   if (state.dirtyFields.has("review-time")) {
     changes.scheduled_at = fromInput($("review-time").value);
     changes.timezone = zone;
+  }
+  if (state.dirtyFields.has("review-repeat")) {
+    const unit = $("review-repeat-unit").value;
+    const every = unit === "once" ? 1 : Number($("review-repeat-count").value);
+    if (!Number.isInteger(every) || every < 1 || every > 365)
+      throw new Error("Enter a whole repeat interval between 1 and 365.");
+    changes.repeat_unit = unit;
+    changes.repeat_every = every;
   }
   const updated = await api(`/api/posts/${post.id}`, {
     method: "PATCH",
@@ -737,8 +761,18 @@ for (const id of ["review-topic", "post-content", "review-time"])
     state.dirty = true;
     state.dirtyFields.add(id);
     if (id === "review-topic") $("review-subtitle").textContent = $(id).value;
+    if (id === "review-time") updateReviewRepeat();
     updateCount();
   });
+for (const id of ["review-repeat-unit", "review-repeat-count"])
+  $(id).addEventListener(
+    id === "review-repeat-unit" ? "change" : "input",
+    () => {
+      state.dirty = true;
+      state.dirtyFields.add("review-repeat");
+      updateReviewRepeat();
+    },
+  );
 $("save-button").addEventListener("click", () =>
   runAction(async () => {
     await saveDraft();

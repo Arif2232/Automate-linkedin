@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f6f7fb" />
     <title>Post Studio — your LinkedIn writing space</title>
-    <link rel="stylesheet" href="/static/styles.css?v=3" />
-    <script src="/static/app.js?v=3" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=4" />
+    <script src="/static/app.js?v=4" defer></script>
   </head>
   <body>
     <svg
@@ -442,9 +442,37 @@
                     </div>
                     <svg class="icon"><use href="#i-clock"></use></svg>
                   </div>
-                  <label for="review-time" class="visually-hidden"
-                    >Scheduled date and time</label
-                  ><input id="review-time" type="datetime-local" />
+                  <div class="schedule-grid">
+                    <div>
+                      <label for="review-time">Scheduled date and time</label>
+                      <input id="review-time" type="datetime-local" />
+                    </div>
+                    <div>
+                      <label for="review-repeat-unit">Repeat</label>
+                      <select id="review-repeat-unit">
+                        <option value="once">Just once</option>
+                        <option value="hours">Every few hours</option>
+                        <option value="days">Every few days</option>
+                        <option value="weeks">Every few weeks</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div
+                    id="review-repeat-count-wrap"
+                    class="repeat-count"
+                    hidden
+                  >
+                    <label for="review-repeat-count">Repeat every</label>
+                    <input
+                      id="review-repeat-count"
+                      type="number"
+                      min="1"
+                      max="365"
+                      step="1"
+                      value="1"
+                    />
+                    <span id="review-repeat-count-unit">days</span>
+                  </div>
                   <p id="review-schedule-detail" class="field-hint"></p>
                 </div>
                 <div class="editor-actions">

@@ -102,6 +102,8 @@ class PostEdit(BaseModel):
     content: str | None = Field(default=None, min_length=1, max_length=3000)
     scheduled_at: datetime | None = None
     timezone: str | None = Field(default=None, min_length=1, max_length=100)
+    repeat_unit: Literal["once", "hours", "days", "weeks"] | None = None
+    repeat_every: int | None = Field(default=None, ge=1, le=365)
     revision: int = Field(ge=0)
 
 
@@ -444,7 +446,9 @@ def edit_post(post_id: str, payload: PostEdit):
         raise HTTPException(400, "The post cannot be empty.")
     if (payload.scheduled_at is None) != (payload.timezone is None):
         raise HTTPException(400, "Include both the scheduled time and time zone.")
-    if payload.topic is None and payload.content is None and payload.scheduled_at is None:
+    if (payload.repeat_unit is None) != (payload.repeat_every is None):
+        raise HTTPException(400, "Include both the repeat interval and unit.")
+    if payload.topic is None and payload.content is None and payload.scheduled_at is None and payload.repeat_unit is None:
         raise HTTPException(400, "No changes provided.")
     scheduled = valid_time(payload.scheduled_at, payload.timezone) if payload.scheduled_at is not None else None
     with db(write=True) as connection:
@@ -455,12 +459,29 @@ def edit_post(post_id: str, payload: PostEdit):
             raise HTTPException(400, "The topic cannot be empty.")
         content = payload.content if payload.content is not None else row["content"]
         scheduled = scheduled if scheduled is not None else row["scheduled_at"]
+        updated_at = timestamp(now())
         connection.execute(
             "UPDATE posts SET topic_override = ?, content = ?, scheduled_at = ?, updated_at = ?, revision = revision + 1 WHERE id = ?",
-            (topic, content, scheduled, timestamp(now()), post_id),
+            (topic, content, scheduled, updated_at, post_id),
         )
+        series_changed = False
         if payload.timezone is not None and (scheduled != row["scheduled_at"] or payload.timezone != row["timezone"]):
             connection.execute("UPDATE series SET anchor_at = ?, timezone = ? WHERE id = ?", (scheduled, payload.timezone, row["series_id"]))
+            series_changed = True
+        if payload.repeat_unit is not None:
+            every = 1 if payload.repeat_unit == "once" else payload.repeat_every
+            active = int(payload.repeat_unit != "once")
+            if (payload.repeat_unit, every, active) != (row["repeat_unit"], row["repeat_every"], row["series_active"]):
+                connection.execute(
+                    "UPDATE series SET repeat_unit = ?, repeat_every = ?, active = ?, anchor_at = ? WHERE id = ?",
+                    (payload.repeat_unit, every, active, scheduled, row["series_id"]),
+                )
+                series_changed = True
+        if series_changed:
+            connection.execute(
+                "UPDATE posts SET updated_at = ?, revision = revision + 1 WHERE series_id = ? AND id != ? AND status != 'published'",
+                (updated_at, row["series_id"], post_id),
+            )
         return public_post(find_post(connection, post_id))
 
 
@@ -570,7 +591,12 @@ def retry(post_id: str):
 def stop_repeat(post_id: str):
     with db(write=True) as connection:
         row = require_post(connection, post_id)
-        connection.execute("UPDATE series SET active = 0 WHERE id = ?", (row["series_id"],))
+        if row["series_active"]:
+            connection.execute("UPDATE series SET active = 0 WHERE id = ?", (row["series_id"],))
+            connection.execute(
+                "UPDATE posts SET updated_at = ?, revision = revision + 1 WHERE series_id = ? AND (id = ? OR status != 'published')",
+                (timestamp(now()), row["series_id"], post_id),
+            )
         return public_post(find_post(connection, post_id))
 
 

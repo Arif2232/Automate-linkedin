@@ -428,6 +428,7 @@ select:focus-visible {
 .settings-card input,
 .settings-card select,
 .editor-content input,
+.editor-content select,
 .editor-content textarea,
 .chat-form textarea {
   width: 100%;
@@ -448,6 +449,7 @@ select:focus-visible {
 .settings-card input:focus,
 .settings-card select:focus,
 .editor-content input:focus,
+.editor-content select:focus,
 .editor-content textarea:focus,
 .chat-form textarea:focus {
   border-color: #9388e8;

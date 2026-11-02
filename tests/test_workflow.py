@@ -854,7 +854,136 @@ def test_topic_only_edit_does_not_change_text_or_schedule(client, monkeypatch):
 
 
 def test_ui_assets_are_not_cached_after_updates(client):
-    for path in ("/", "/static/app.js?v=3", "/static/styles.css?v=3"):
+    for path in ("/", "/static/app.js?v=4", "/static/styles.css?v=4"):
         response = client.get(path)
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
+
+
+def test_review_can_change_repeat_interval_without_moving_current_post(client, monkeypatch):
+    setup(client)
+    scheduled = storage.now() + timedelta(hours=1)
+    first = create(client, "days", scheduled)
+    generate(first["id"], monkeypatch)
+    assert approve(client, detail(client, first["id"])).status_code == 200
+
+    async def publish(*args):
+        return "urn:li:share:123"
+
+    monkeypatch.setattr(services, "publish_to_linkedin", publish)
+    monkeypatch.setattr(worker, "now", lambda: scheduled + timedelta(seconds=1))
+    assert worker.claim("approved", "publishing", due=True) == first["id"]
+    asyncio.run(worker.publish(first["id"]))
+    current = next(post for post in client.get("/api/posts").json() if post["id"] != first["id"])
+    generate(current["id"], monkeypatch)
+    current = detail(client, current["id"])
+    updated = client.patch(f"/api/posts/{current['id']}", json={
+        "revision": current["revision"], "repeat_unit": "weeks", "repeat_every": 2,
+    })
+    assert updated.status_code == 200
+    edited = updated.json()
+    assert (edited["repeat_unit"], edited["repeat_every"], edited["series_active"]) == ("weeks", 2, 1)
+    assert edited["scheduled_at"] == current["scheduled_at"]
+    assert edited["content"] == current["content"] and edited["image_url"]
+    with storage.db() as connection:
+        assert connection.execute("SELECT anchor_at FROM series WHERE id = ?", (current["series_id"],)).fetchone()[0] == current["scheduled_at"]
+    assert approve(client, edited).status_code == 200
+    current_time = storage.parse_time(current["scheduled_at"])
+    monkeypatch.setattr(worker, "now", lambda: current_time + timedelta(seconds=1))
+    assert worker.claim("approved", "publishing", due=True) == current["id"]
+    asyncio.run(worker.publish(current["id"]))
+    next_post = next(post for post in client.get("/api/posts").json() if post["status"] == "queued")
+    assert storage.parse_time(next_post["scheduled_at"]) == current_time + timedelta(weeks=2)
+
+
+@pytest.mark.parametrize("initial,changed,every,interval", [
+    ("once", "hours", 2, timedelta(hours=2)),
+    ("days", "once", 1, None),
+])
+def test_review_can_start_or_stop_repeating(client, monkeypatch, initial, changed, every, interval):
+    setup(client)
+    scheduled = storage.now() + timedelta(hours=1)
+    post = create(client, initial, scheduled)
+    generate(post["id"], monkeypatch)
+    post = detail(client, post["id"])
+    response = client.patch(f"/api/posts/{post['id']}", json={
+        "revision": post["revision"], "repeat_unit": changed, "repeat_every": every,
+    })
+    assert response.status_code == 200
+    assert response.json()["series_active"] == int(interval is not None)
+    assert approve(client, response.json()).status_code == 200
+
+    async def publish(*args):
+        return "urn:li:share:123"
+
+    monkeypatch.setattr(services, "publish_to_linkedin", publish)
+    monkeypatch.setattr(worker, "now", lambda: scheduled + timedelta(seconds=1))
+    assert worker.claim("approved", "publishing", due=True) == post["id"]
+    asyncio.run(worker.publish(post["id"]))
+    queued = [item for item in client.get("/api/posts").json() if item["status"] == "queued"]
+    assert len(queued) == int(interval is not None)
+    if interval is not None:
+        assert storage.parse_time(queued[0]["scheduled_at"]) == scheduled + interval
+
+
+def test_repeat_edit_rejects_invalid_or_stale_changes(client, monkeypatch):
+    setup(client)
+    post = create(client, "days")
+    generate(post["id"], monkeypatch)
+    post = detail(client, post["id"])
+    url = f"/api/posts/{post['id']}"
+    assert client.patch(url, json={"revision": post["revision"], "repeat_unit": "weeks"}).status_code == 400
+    assert client.patch(url, json={"revision": post["revision"], "repeat_unit": "weeks", "repeat_every": 0}).status_code == 422
+    assert client.patch(url, json={"revision": post["revision"], "repeat_unit": "months", "repeat_every": 1}).status_code == 422
+    assert client.post(f"/api/posts/{post['id']}/stop-repeat").status_code == 200
+    assert client.patch(url, json={"revision": post["revision"], "repeat_unit": "weeks", "repeat_every": 1}).status_code == 409
+    current = detail(client, post["id"])
+    assert current["series_active"] == 0
+    resumed = client.patch(url, json={"revision": current["revision"], "repeat_unit": "weeks", "repeat_every": 1})
+    assert resumed.status_code == 200 and resumed.json()["series_active"] == 1
+    assert approve(client, resumed.json()).status_code == 200
+    assert client.patch(url, json={"revision": resumed.json()["revision"], "repeat_unit": "days", "repeat_every": 1}).status_code == 409
+
+
+def test_stopping_repeat_from_history_invalidates_open_draft(client, monkeypatch):
+    setup(client)
+    scheduled = storage.now() + timedelta(hours=1)
+    first = create(client, "days", scheduled)
+    generate(first["id"], monkeypatch)
+    assert approve(client, detail(client, first["id"])).status_code == 200
+
+    async def publish(*args):
+        return "urn:li:share:123"
+
+    monkeypatch.setattr(services, "publish_to_linkedin", publish)
+    monkeypatch.setattr(worker, "now", lambda: scheduled + timedelta(seconds=1))
+    assert worker.claim("approved", "publishing", due=True) == first["id"]
+    asyncio.run(worker.publish(first["id"]))
+    current = next(post for post in client.get("/api/posts").json() if post["status"] == "queued")
+    generate(current["id"], monkeypatch)
+    current = detail(client, current["id"])
+    assert client.post(f"/api/posts/{first['id']}/stop-repeat").status_code == 200
+    stale = client.patch(f"/api/posts/{current['id']}", json={
+        "revision": current["revision"], "repeat_unit": "weeks", "repeat_every": 1,
+    })
+    assert stale.status_code == 409
+    assert detail(client, current["id"])["series_active"] == 0
+    assert detail(client, first["id"])["status"] == "published"
+
+
+def test_changing_time_and_repeat_together_sets_the_new_local_anchor(client, monkeypatch):
+    setup(client)
+    post = create(client)
+    generate(post["id"], monkeypatch)
+    post = detail(client, post["id"])
+    new_time = "2030-03-09T14:00:00.000000Z"  # 9am in New York before daylight saving
+    response = client.patch(f"/api/posts/{post['id']}", json={
+        "revision": post["revision"], "scheduled_at": new_time, "timezone": "America/New_York",
+        "repeat_unit": "days", "repeat_every": 1,
+    })
+    assert response.status_code == 200
+    with storage.db() as connection:
+        series = connection.execute("SELECT anchor_at, timezone, repeat_unit, repeat_every FROM series WHERE id = ?", (post["series_id"],)).fetchone()
+    assert series["anchor_at"] == new_time and series["timezone"] == "America/New_York"
+    after = datetime(2030, 3, 9, 14, 1, tzinfo=timezone.utc)
+    assert storage.next_occurrence(series["anchor_at"], series["repeat_unit"], series["repeat_every"], series["timezone"], after) == datetime(2030, 3, 10, 13, 0, tzinfo=timezone.utc)

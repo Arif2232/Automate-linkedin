@@ -101,13 +101,18 @@ async def text_response(config, instructions, messages):
     return result.strip()
 
 
-async def generate_text(config, topic, context):
+async def generate_text(config, topic, context, previous=()):
+    prompt = f"Topic: {topic}\n\nContext and preferences:\n{context or '(none provided)'}"
+    if previous:
+        prompt += ("\n\nEarlier posts on this topic (for reference only):\n" +
+                   "\n\n---\n\n".join(previous) +
+                   "\n\nWrite a fresh post with a different angle and wording; do not repeat the earlier posts.")
     return await text_response(
         config,
         "Write a compelling LinkedIn post for a person's professional network. "
         "Use the supplied context, avoid inventing facts or personal experiences, "
         "and keep it under 3000 characters. Return only the post, without quotation marks.",
-        [{"role": "user", "content": f"Topic: {topic}\n\nContext and preferences:\n{context or '(none provided)'}"}],
+        [{"role": "user", "content": prompt}],
     )
 
 

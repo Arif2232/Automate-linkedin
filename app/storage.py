@@ -11,6 +11,7 @@ DATA_DIR = Path(os.environ.get("POST_STUDIO_DATA_DIR", ROOT / "data")).expanduse
 DB_PATH = DATA_DIR / "studio.sqlite3"
 IMAGE_DIR = DATA_DIR / "images"
 UTC = timezone.utc
+MAX_REPEATS = 5
 
 
 def now():
@@ -91,7 +92,8 @@ def initialize():
                 repeat_every INTEGER NOT NULL,
                 timezone TEXT NOT NULL,
                 anchor_at TEXT NOT NULL,
-                active INTEGER NOT NULL
+                active INTEGER NOT NULL,
+                repeat_limit INTEGER NOT NULL DEFAULT 5
             );
             CREATE TABLE IF NOT EXISTS posts (
                 id TEXT PRIMARY KEY,
@@ -118,11 +120,15 @@ def initialize():
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS posts_due ON posts(status, scheduled_at);
+            CREATE INDEX IF NOT EXISTS posts_series ON posts(series_id);
         """)
     with db(write=True) as connection:
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(posts)")}
         if "topic_override" not in columns:
             connection.execute("ALTER TABLE posts ADD COLUMN topic_override TEXT")
+        series_columns = {row["name"] for row in connection.execute("PRAGMA table_info(series)")}
+        if "repeat_limit" not in series_columns:
+            connection.execute("ALTER TABLE series ADD COLUMN repeat_limit INTEGER NOT NULL DEFAULT 5")
         connection.execute(
             "INSERT OR IGNORE INTO settings(key, value) VALUES('session_secret', ?)",
             (secrets.token_urlsafe(48),),
@@ -189,7 +195,8 @@ def set_setting(connection, key, value):
 POST_QUERY = """
     SELECT posts.*, COALESCE(posts.topic_override, series.topic) AS topic,
            series.context, series.repeat_unit, series.repeat_every,
-           series.timezone, series.anchor_at, series.active AS series_active
+           series.timezone, series.anchor_at, series.active AS series_active, series.repeat_limit,
+           (SELECT COUNT(*) FROM posts AS sibling WHERE sibling.series_id = series.id) AS series_post_count
     FROM posts JOIN series ON series.id = posts.series_id
 """
 
@@ -204,7 +211,8 @@ def public_post(row):
     post = {key: row[key] for key in (
         "id", "series_id", "topic", "context", "scheduled_at", "status", "content",
         "image_error", "error", "linkedin_id", "created_at", "updated_at", "revision",
-        "repeat_unit", "repeat_every", "timezone", "series_active",
+        "repeat_unit", "repeat_every", "repeat_limit", "timezone", "series_active",
     )}
+    post["repeats_created"] = max(0, row["series_post_count"] - 1)
     post["image_url"] = f"/api/posts/{row['id']}/image?v={row['revision']}" if row["image_file"] else None
     return post

@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from . import providers, services
 from .storage import (
-    IMAGE_DIR, db, find_post, get_setting, next_occurrence, now, parse_time, timestamp,
+    IMAGE_DIR, MAX_REPEATS, db, find_post, get_setting, next_occurrence, now, parse_time, timestamp,
 )
 
 log = logging.getLogger(__name__)
@@ -39,6 +39,10 @@ async def make_draft(post_id, image_only=False):
     try:
         with db() as connection:
             settings = {item["key"]: item["value"] for item in connection.execute("SELECT key, value FROM settings")}
+            previous = [item["content"] for item in connection.execute(
+                "SELECT content FROM posts WHERE series_id = ? AND status = 'published' AND id != ? "
+                "ORDER BY created_at DESC LIMIT ?", (row["series_id"], post_id, MAX_REPEATS),
+            )] if not content else []
         text_config = providers.selected(settings, "text")
         image_config = providers.selected(settings, "image")
         if not content:
@@ -47,7 +51,7 @@ async def make_draft(post_id, image_only=False):
                 raise LookupError("Configure a writing provider and model in Settings.")
             if not text_config["tested"]:
                 raise LookupError("Test the writing connection in Settings before continuing.")
-            content = await services.generate_text(text_config, row["topic"], row["context"])
+            content = await services.generate_text(text_config, row["topic"], row["context"], previous)
             with db(write=True) as connection:
                 connection.execute(
                     "UPDATE posts SET content = ?, updated_at = ?, revision = revision + 1 WHERE id = ? AND status = ?",
@@ -139,16 +143,19 @@ async def publish(post_id):
             current = find_post(connection, post_id)
             if current["series_active"] and current["repeat_unit"] != "once":
                 try:
-                    scheduled = next_occurrence(
-                        current["anchor_at"], current["repeat_unit"], current["repeat_every"],
-                        current["timezone"], now(),
-                    )
-                    created = timestamp(now())
-                    connection.execute(
-                        "INSERT INTO posts(id, series_id, scheduled_at, status, created_at, updated_at) "
-                        "VALUES(?, ?, ?, 'queued', ?, ?)",
-                        (uuid4().hex, current["series_id"], timestamp(scheduled), created, created),
-                    )
+                    if current["series_post_count"] - 1 >= current["repeat_limit"]:
+                        connection.execute("UPDATE series SET active = 0 WHERE id = ?", (current["series_id"],))
+                    else:
+                        scheduled = next_occurrence(
+                            current["anchor_at"], current["repeat_unit"], current["repeat_every"],
+                            current["timezone"], now(),
+                        )
+                        created = timestamp(now())
+                        connection.execute(
+                            "INSERT INTO posts(id, series_id, scheduled_at, status, created_at, updated_at) "
+                            "VALUES(?, ?, ?, 'queued', ?, ?)",
+                            (uuid4().hex, current["series_id"], timestamp(scheduled), created, created),
+                        )
                 except Exception:
                     connection.execute("UPDATE series SET active = 0 WHERE id = ?", (current["series_id"],))
                     connection.execute(

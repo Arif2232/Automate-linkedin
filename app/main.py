@@ -19,7 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import providers, services, worker
 from .storage import (
-    IMAGE_DIR, ROOT, db, find_post, get_setting, initialize, instance_lock, now, parse_time,
+    IMAGE_DIR, MAX_REPEATS, ROOT, db, find_post, get_setting, initialize, instance_lock, now, parse_time,
     public_post, recover_interrupted, set_setting, timestamp, POST_QUERY,
 )
 
@@ -95,6 +95,7 @@ class PostInput(BaseModel):
     timezone: str = Field(min_length=1, max_length=100)
     repeat_unit: Literal["once", "hours", "days", "weeks"] = "once"
     repeat_every: int = Field(default=1, ge=1, le=365)
+    repeat_limit: int = Field(default=MAX_REPEATS, ge=1, le=MAX_REPEATS)
 
 
 class PostEdit(BaseModel):
@@ -104,6 +105,7 @@ class PostEdit(BaseModel):
     timezone: str | None = Field(default=None, min_length=1, max_length=100)
     repeat_unit: Literal["once", "hours", "days", "weeks"] | None = None
     repeat_every: int | None = Field(default=None, ge=1, le=365)
+    repeat_limit: int | None = Field(default=None, ge=1, le=MAX_REPEATS)
     revision: int = Field(ge=0)
 
 
@@ -407,10 +409,10 @@ def create_post(payload: PostInput):
         require_tested(providers.selected(settings, "text"), "text")
         require_tested(providers.selected(settings, "image"), "image")
         connection.execute(
-            "INSERT INTO series(id, topic, context, repeat_unit, repeat_every, timezone, anchor_at, active) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO series(id, topic, context, repeat_unit, repeat_every, timezone, anchor_at, active, repeat_limit) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (series_id, topic, payload.context.strip(), payload.repeat_unit, payload.repeat_every,
-             payload.timezone, scheduled, int(payload.repeat_unit != "once")),
+             payload.timezone, scheduled, int(payload.repeat_unit != "once"), payload.repeat_limit),
         )
         connection.execute(
             "INSERT INTO posts(id, series_id, scheduled_at, status, created_at, updated_at) "
@@ -448,7 +450,7 @@ def edit_post(post_id: str, payload: PostEdit):
         raise HTTPException(400, "Include both the scheduled time and time zone.")
     if (payload.repeat_unit is None) != (payload.repeat_every is None):
         raise HTTPException(400, "Include both the repeat interval and unit.")
-    if payload.topic is None and payload.content is None and payload.scheduled_at is None and payload.repeat_unit is None:
+    if payload.topic is None and payload.content is None and payload.scheduled_at is None and payload.repeat_unit is None and payload.repeat_limit is None:
         raise HTTPException(400, "No changes provided.")
     scheduled = valid_time(payload.scheduled_at, payload.timezone) if payload.scheduled_at is not None else None
     with db(write=True) as connection:
@@ -457,6 +459,12 @@ def edit_post(post_id: str, payload: PostEdit):
         topic = payload.topic.strip() if payload.topic is not None else row["topic_override"]
         if payload.topic is not None and not topic:
             raise HTTPException(400, "The topic cannot be empty.")
+        limit = payload.repeat_limit if payload.repeat_limit is not None else row["repeat_limit"]
+        created = max(0, row["series_post_count"] - 1)
+        if payload.repeat_limit is not None and limit != row["repeat_limit"] and limit < created:
+            raise HTTPException(400, f"This schedule already created {created} repeats. Choose at least {created}.")
+        if payload.repeat_unit not in {None, "once"} and not row["series_active"] and created >= limit:
+            raise HTTPException(400, "This schedule has reached its repeat limit. Increase it or create a new post.")
         content = payload.content if payload.content is not None else row["content"]
         scheduled = scheduled if scheduled is not None else row["scheduled_at"]
         updated_at = timestamp(now())
@@ -477,6 +485,9 @@ def edit_post(post_id: str, payload: PostEdit):
                     (payload.repeat_unit, every, active, scheduled, row["series_id"]),
                 )
                 series_changed = True
+        if payload.repeat_limit is not None and limit != row["repeat_limit"]:
+            connection.execute("UPDATE series SET repeat_limit = ? WHERE id = ?", (limit, row["series_id"]))
+            series_changed = True
         if series_changed:
             connection.execute(
                 "UPDATE posts SET updated_at = ?, revision = revision + 1 WHERE series_id = ? AND id != ? AND status != 'published'",

@@ -459,7 +459,9 @@ async function refresh() {
       toast("This draft is no longer available.");
     } else if (
       current.revision !== state.selected.revision ||
-      current.series_active !== state.selected.series_active
+      current.series_active !== state.selected.series_active ||
+      current.repeat_limit !== state.selected.repeat_limit ||
+      current.repeats_created !== state.selected.repeats_created
     )
       await loadPost(current.id);
   }
@@ -508,8 +510,11 @@ function renderReview() {
   const repeating = post.repeat_unit !== "once" && post.series_active;
   $("review-repeat-unit").value = repeating ? post.repeat_unit : "once";
   $("review-repeat-count").value = post.repeat_every;
-  $("review-repeat-unit").disabled = !editable;
+  $("review-repeat-limit").value = post.repeat_limit;
+  $("review-repeat-limit").min = String(Math.min(5, Math.max(1, post.repeats_created)));
+  $("review-repeat-unit").disabled = !editable || (!post.series_active && post.repeats_created >= 5);
   $("review-repeat-count").disabled = !editable;
+  $("review-repeat-limit").disabled = !editable;
   updateReviewRepeat();
   $("character-count").textContent = `${post.content.length} / 3000`;
   $("post-image").hidden = !post.image_url;
@@ -634,10 +639,18 @@ function updateReviewRepeat() {
   const scheduleZone = state.dirtyFields.has("review-time")
     ? zone
     : state.selected.timezone;
-  $("review-schedule-detail").textContent =
-    unit === "once"
-      ? `Time shown in ${zone}. This post will not repeat.`
-      : `Time shown in ${zone}. After publication, a new draft is prepared every ${count || "…"} ${count === "1" ? unit.slice(0, -1) : unit} for your approval.${unit === "hours" ? "" : ` Repeats use ${scheduleZone}.`}`;
+  const created = state.selected.repeats_created;
+  const limit = Number($("review-repeat-limit").value);
+  if (unit === "once")
+    $("review-schedule-detail").textContent = !state.selected.series_active && created >= 5
+      ? `Time shown in ${zone}. This topic has reached five repeats; create a new post to start another schedule.`
+      : `Time shown in ${zone}. This post will not repeat.`;
+  else if (created >= limit && limit > 0)
+    $("review-schedule-detail").textContent = state.selected.status === "published"
+      ? `Time shown in ${zone}. The repeat limit has been reached; no drafts will be created after the final repeat.`
+      : `Time shown in ${zone}. The repeat limit has been reached; this is the last draft in the schedule.`;
+  else
+    $("review-schedule-detail").textContent = `Time shown in ${zone}. ${created} of ${limit || "…"} repeats created. After publication, a fresh draft${state.config?.ai.image.provider === "none" ? "" : " and image"} is prepared every ${count || "…"} ${count === "1" ? unit.slice(0, -1) : unit} for your approval.${unit === "hours" ? "" : ` Repeats use ${scheduleZone}.`}`;
 }
 function toggleBusy(value) {
   state.busy = value;
@@ -660,11 +673,14 @@ function toggleBusy(value) {
       "review-time",
       "review-repeat-unit",
       "review-repeat-count",
+      "review-repeat-limit",
       "image-instruction",
       "chat-input",
       "publish-without-image",
     ])
       $(id).disabled = locked;
+    if (!state.selected.series_active && state.selected.repeats_created >= 5)
+      $("review-repeat-unit").disabled = true;
   }
   if (!value && state.selected)
     $("chat-send").disabled = state.selected.status !== "needs_review";
@@ -699,6 +715,12 @@ async function saveDraft() {
       throw new Error("Enter a whole repeat interval between 1 and 365.");
     changes.repeat_unit = unit;
     changes.repeat_every = every;
+    if (unit !== "once") {
+      const limit = Number($("review-repeat-limit").value);
+      if (!Number.isInteger(limit) || limit < Math.max(1, post.repeats_created) || limit > 5)
+        throw new Error(`Choose a repeat count between ${Math.max(1, post.repeats_created)} and 5.`);
+      changes.repeat_limit = limit;
+    }
   }
   const updated = await api(`/api/posts/${post.id}`, {
     method: "PATCH",
@@ -716,16 +738,32 @@ for (const element of document.querySelectorAll("[data-nav]"))
   });
 $("timezone-label").textContent = `Your time zone: ${zone}`;
 defaultTime();
-$("repeat-unit").addEventListener("change", () => {
-  $("repeat-count-wrap").hidden = $("repeat-unit").value === "once";
-  $("repeat-count-unit").textContent = $("repeat-unit").value;
-});
+function updateCreateRepeat() {
+  const unit = $("repeat-unit").value;
+  const once = unit === "once";
+  $("repeat-count-wrap").hidden = once;
+  $("repeat-count").disabled = once;
+  $("repeat-limit").disabled = once;
+  $("repeat-count-unit").textContent = $("repeat-count").value === "1" ? unit.slice(0, -1) : unit;
+  $("create-repeat-hint").textContent = once
+    ? "You’ll review this post."
+    : "After the first post, each repeat gets fresh content and an image when enabled. You review every draft.";
+}
+$("repeat-unit").addEventListener("change", updateCreateRepeat);
+$("repeat-count").addEventListener("input", updateCreateRepeat);
+updateCreateRepeat();
 $("create-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = $("create-button");
   state.creating = true;
   button.disabled = true;
   try {
+    const unit = $("repeat-unit").value;
+    const every = unit === "once" ? 1 : Number($("repeat-count").value);
+    const limit = unit === "once" ? 5 : Number($("repeat-limit").value);
+    if (!Number.isInteger(every) || every < 1 || every > 365 ||
+        !Number.isInteger(limit) || limit < 1 || limit > 5)
+      throw new Error("Choose a valid interval and between 1 and 5 repeats.");
     const post = await api("/api/posts", {
       method: "POST",
       body: {
@@ -733,8 +771,9 @@ $("create-form").addEventListener("submit", async (event) => {
         context: $("context").value.trim(),
         scheduled_at: fromInput($("first-time").value),
         timezone: zone,
-        repeat_unit: $("repeat-unit").value,
-        repeat_every: Number($("repeat-count").value),
+        repeat_unit: unit,
+        repeat_every: every,
+        repeat_limit: limit,
       },
     });
     $("topic").value = "";
@@ -764,7 +803,7 @@ for (const id of ["review-topic", "post-content", "review-time"])
     if (id === "review-time") updateReviewRepeat();
     updateCount();
   });
-for (const id of ["review-repeat-unit", "review-repeat-count"])
+for (const id of ["review-repeat-unit", "review-repeat-count", "review-repeat-limit"])
   $(id).addEventListener(
     id === "review-repeat-unit" ? "change" : "input",
     () => {

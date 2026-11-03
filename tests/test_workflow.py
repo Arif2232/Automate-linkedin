@@ -830,6 +830,7 @@ def test_existing_database_keeps_drafts_and_credentials_during_topic_migration(t
         post = storage.find_post(connection, "draft")
         assert post["topic"] == "Original topic" and post["topic_override"] is None
         assert post["content"] == "Existing draft text"
+        assert post["repeat_limit"] == 5 and post["series_post_count"] == 1
         assert connection.execute("SELECT value FROM settings WHERE key = 'openai_api_key'").fetchone()[0] == "legacy-test-key"
 
 
@@ -854,7 +855,7 @@ def test_topic_only_edit_does_not_change_text_or_schedule(client, monkeypatch):
 
 
 def test_ui_assets_are_not_cached_after_updates(client):
-    for path in ("/", "/static/app.js?v=4", "/static/styles.css?v=4"):
+    for path in ("/", "/static/app.js?v=5", "/static/styles.css?v=5"):
         response = client.get(path)
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
@@ -878,11 +879,12 @@ def test_review_can_change_repeat_interval_without_moving_current_post(client, m
     generate(current["id"], monkeypatch)
     current = detail(client, current["id"])
     updated = client.patch(f"/api/posts/{current['id']}", json={
-        "revision": current["revision"], "repeat_unit": "weeks", "repeat_every": 2,
+        "revision": current["revision"], "repeat_unit": "weeks", "repeat_every": 2, "repeat_limit": 3,
     })
     assert updated.status_code == 200
     edited = updated.json()
     assert (edited["repeat_unit"], edited["repeat_every"], edited["series_active"]) == ("weeks", 2, 1)
+    assert edited["repeat_limit"] == 3 and edited["repeats_created"] == 1
     assert edited["scheduled_at"] == current["scheduled_at"]
     assert edited["content"] == current["content"] and edited["image_url"]
     with storage.db() as connection:
@@ -987,3 +989,103 @@ def test_changing_time_and_repeat_together_sets_the_new_local_anchor(client, mon
     assert series["anchor_at"] == new_time and series["timezone"] == "America/New_York"
     after = datetime(2030, 3, 9, 14, 1, tzinfo=timezone.utc)
     assert storage.next_occurrence(series["anchor_at"], series["repeat_unit"], series["repeat_every"], series["timezone"], after) == datetime(2030, 3, 10, 13, 0, tzinfo=timezone.utc)
+
+
+def test_five_repeats_each_generate_fresh_content_and_image_for_review(client, monkeypatch):
+    setup(client)
+    first_time = storage.now() + timedelta(hours=1)
+    response = client.post("/api/posts", json={
+        "topic": "A topic", "context": "A perspective", "scheduled_at": storage.timestamp(first_time),
+        "timezone": "UTC", "repeat_unit": "days", "repeat_every": 1, "repeat_limit": 5,
+    })
+    assert response.status_code == 201
+    post = response.json()
+    prompts, images, sent = [], [], []
+
+    async def text(config, topic, context, previous):
+        prompts.append(list(previous))
+        return f"Fresh draft {len(prompts)}"
+
+    async def image(config, topic, context, content, instruction, existing):
+        assert existing is None
+        filename = services.save_image(base64.b64encode(PNG).decode())
+        images.append((content, filename))
+        return filename
+
+    async def publish(token, person, content, image_data):
+        sent.append(content)
+        assert image_data == PNG
+        return f"urn:li:share:{len(sent)}"
+
+    monkeypatch.setattr(services, "generate_text", text)
+    monkeypatch.setattr(services, "generate_image", image)
+    monkeypatch.setattr(services, "publish_to_linkedin", publish)
+    clock = [first_time]
+    monkeypatch.setattr(worker, "now", lambda: clock[0])
+
+    for index in range(6):
+        assert worker.claim("queued", "generating") == post["id"]
+        asyncio.run(worker.make_draft(post["id"]))
+        post = detail(client, post["id"])
+        assert post["status"] == "needs_review" and post["repeats_created"] == index
+        assert post["content"] == f"Fresh draft {index + 1}" and post["image_url"]
+        assert set(prompts[index]) == {f"Fresh draft {number}" for number in range(1, index + 1)}
+        if index == 2:
+            too_few = client.patch(f"/api/posts/{post['id']}", json={"revision": post["revision"], "repeat_limit": 1})
+            assert too_few.status_code == 400
+        assert worker.claim("approved", "publishing", due=True) is None
+        assert approve(client, post).status_code == 200
+        clock[0] = storage.parse_time(post["scheduled_at"]) + timedelta(seconds=1)
+        assert worker.claim("approved", "publishing", due=True) == post["id"]
+        asyncio.run(worker.publish(post["id"]))
+        posts = client.get("/api/posts").json()
+        queued = [item for item in posts if item["status"] == "queued"]
+        if index < 5:
+            assert len(queued) == 1
+            post = queued[0]
+        else:
+            assert not queued and len(posts) == 6
+            assert all(item["series_active"] == 0 for item in posts)
+
+    assert len({filename for _, filename in images}) == 6
+    assert sent == [content for content, _ in images]
+
+
+def test_repeat_count_can_be_changed_but_never_exceeds_five(client, monkeypatch):
+    setup(client)
+    first = storage.now() + timedelta(hours=1)
+    payload = {"topic": "Repeat test", "scheduled_at": storage.timestamp(first), "timezone": "UTC", "repeat_unit": "days"}
+    assert client.post("/api/posts", json={**payload, "repeat_limit": 6}).status_code == 422
+    assert client.post("/api/posts", json={**payload, "repeat_limit": 0}).status_code == 422
+    post = client.post("/api/posts", json={**payload, "repeat_limit": 2}).json()
+    generate(post["id"], monkeypatch)
+    post = detail(client, post["id"])
+    changed = client.patch(f"/api/posts/{post['id']}", json={"revision": post["revision"], "repeat_limit": 1})
+    assert changed.status_code == 200 and changed.json()["repeat_limit"] == 1
+    assert approve(client, changed.json()).status_code == 200
+    async def publish(*args): return "urn:li:share:1"
+    monkeypatch.setattr(services, "publish_to_linkedin", publish)
+    monkeypatch.setattr(worker, "now", lambda: first + timedelta(seconds=1))
+    assert worker.claim("approved", "publishing", due=True) == post["id"]
+    asyncio.run(worker.publish(post["id"]))
+    repeat = next(item for item in client.get("/api/posts").json() if item["status"] == "queued")
+    generate(repeat["id"], monkeypatch)
+    repeat = detail(client, repeat["id"])
+    assert repeat["repeats_created"] == 1
+    assert client.patch(f"/api/posts/{repeat['id']}", json={"revision": repeat["revision"], "repeat_limit": 6}).status_code == 422
+    assert approve(client, repeat).status_code == 200
+    monkeypatch.setattr(worker, "now", lambda: storage.parse_time(repeat["scheduled_at"]) + timedelta(seconds=1))
+    assert worker.claim("approved", "publishing", due=True) == repeat["id"]
+    asyncio.run(worker.publish(repeat["id"]))
+    posts = client.get("/api/posts").json()
+    assert len(posts) == 2 and all(item["series_active"] == 0 for item in posts)
+
+
+def test_generate_text_asks_for_a_new_angle_on_previous_posts(monkeypatch):
+    calls = []
+    async def response(config, instructions, messages):
+        calls.append(messages[0]["content"])
+        return "A new draft"
+    monkeypatch.setattr(services, "text_response", response)
+    assert asyncio.run(services.generate_text({}, "A topic", "Some context", ["An earlier post"])) == "A new draft"
+    assert "An earlier post" in calls[0] and "different angle and wording" in calls[0]

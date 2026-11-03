@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f6f7fb" />
     <title>Post Studio — your LinkedIn writing space</title>
-    <link rel="stylesheet" href="/static/styles.css?v=4" />
-    <script src="/static/app.js?v=4" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=5" />
+    <script src="/static/app.js?v=5" defer></script>
   </head>
   <body>
     <svg
@@ -215,18 +215,19 @@
                         <option value="hours">Every few hours</option>
                         <option value="days">Every few days</option>
                         <option value="weeks">Every few weeks</option></select
-                      ><span class="field-hint">You’ll review every post.</span>
+                      ><span id="create-repeat-hint" class="field-hint">You’ll review this post.</span>
                     </div>
                   </div>
-                  <div id="repeat-count-wrap" class="repeat-count" hidden>
-                    <label for="repeat-count">Repeat every</label
-                    ><input
-                      id="repeat-count"
-                      type="number"
-                      min="1"
-                      max="365"
-                      value="1"
-                    /><span id="repeat-count-unit">days</span>
+                  <div id="repeat-count-wrap" class="repeat-options" hidden>
+                    <div class="repeat-count">
+                      <label for="repeat-count">Repeat every</label
+                      ><input id="repeat-count" type="number" min="1" max="365" value="1" />
+                      <span id="repeat-count-unit">days</span>
+                    </div>
+                    <div class="repeat-count">
+                      <label for="repeat-limit">Number of repeats (max 5)</label>
+                      <input id="repeat-limit" type="number" min="1" max="5" value="5" />
+                    </div>
                   </div>
                   <div class="form-action">
                     <p>
@@ -459,19 +460,18 @@
                   </div>
                   <div
                     id="review-repeat-count-wrap"
-                    class="repeat-count"
+                    class="repeat-options"
                     hidden
                   >
-                    <label for="review-repeat-count">Repeat every</label>
-                    <input
-                      id="review-repeat-count"
-                      type="number"
-                      min="1"
-                      max="365"
-                      step="1"
-                      value="1"
-                    />
-                    <span id="review-repeat-count-unit">days</span>
+                    <div class="repeat-count">
+                      <label for="review-repeat-count">Repeat every</label>
+                      <input id="review-repeat-count" type="number" min="1" max="365" step="1" value="1" />
+                      <span id="review-repeat-count-unit">days</span>
+                    </div>
+                    <div class="repeat-count">
+                      <label for="review-repeat-limit">Number of repeats (max 5)</label>
+                      <input id="review-repeat-limit" type="number" min="1" max="5" step="1" value="5" />
+                    </div>
                   </div>
                   <p id="review-schedule-detail" class="field-hint"></p>
                 </div>
